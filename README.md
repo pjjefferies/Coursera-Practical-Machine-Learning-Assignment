@@ -1,5 +1,11 @@
 ## Coursera-Practical-Machine-Learning-Assignment
 
+<a href="https://pjjefferies.github.io/Coursera-Practical-Machine-Learning-Assignment/barbell-Lift-Analysis.html">Barbell Lift Analysis HTML File for Grading Here"</A>
+
+or use this URL: https://pjjefferies.github.io/Coursera-Practical-Machine-Learning-Assignment/barbell-Lift-Analysis.html
+
+
+###Boilerplate info below...
 You can use the [editor on GitHub](https://github.com/pjjefferies/Coursera-Practical-Machine-Learning-Assignment/edit/gh-pages/README.md) to maintain and preview the content for your website in Markdown files.
 
 Whenever you commit to this repository, GitHub Pages will run [Jekyll](https://jekyllrb.com/) to rebuild the pages in your site, from the content in your Markdown files.
