@@ -1,0 +1,193 @@
+---
+title: "Barbell Lift Analysis with Body Monitoring"
+author: "Paul Jefferies"
+date: "January 19, 2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+##Summary
+Barbell bicept curling motion is evaluated using body and weight sensors
+to assess whether these measurements can be used to predict good form and
+completeness. This data and study is based on the paper by Vellosso, E.,
+et.al titled <a href='http://groupware.les.inf.puc-rio.br/work.jsf?p1=11201'>
+Qualitative Activity Recognition of Weight Lifting Exercises</a>.  
+
+Training and testing datasets were supplied with 19,622 and 20 observations
+and 160 and 60 variables respectively. The testing dataset did not contain
+the result variable, classe.
+
+Models were fit to the training dataset using k-means to cross-validate with
+10 folds. This meant creating a sub-testing dataset of 90% of the original
+test dataset and validating it on the remaining 10% for each fold. Within
+each fold, the model was constructed using the Random Forest method. The
+solution that came the closest to the average of all the fold results was
+chosen to balance the best fit with minimizing overfitting. This resulted in
+an estimated accuracy of 78.3%. This compares very closely to the original
+authors accuracy of 78.2% using the leave-one-subject-out test.
+
+##Data Processing
+
+###Load Data from cloudfront.net data repository
+
+```{r load csv data, cache=TRUE, echo=TRUE, eval=TRUE}
+trainData <- read.csv("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv")
+testData  <- read.csv("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv")
+```
+
+###Review the Data
+
+```{r Review Data, cache=TRUE, echo=TRUE, eval=TRUE}
+#First let's look at the trainData dataset
+trainData.RowsCols <- dim(trainData)
+trainData.noSparse <- sum(colSums(is.na(trainData))>nrow(trainData)*0.95)
+trainData.ratioSparse <- round(trainData.noSparse/ncol(trainData),2)
+trainData.FirstVars <- colnames(trainData)[1:10]
+trainData.ResultCount <- table(trainData$classe)
+
+testData.RowsCols <- dim(testData)
+testData.NACols <- sum((colSums(is.na(testData))==nrow(testData))*1)
+```
+####Training Set Summary
+   - Variables: `r trainData.RowsCols[2]`
+   - Samples:     `r trainData.RowsCols[1]`
+   - No. of Sparse Variables: `r trainData.noSparse`
+   - Ratio of Sparce Variables: `r trainData.ratioSparse`
+   - List of First Few Variables: `r trainData.FirstVars`
+   - Count of Result Values: `r trainData.ResultCount`
+
+   - Since there are greater than 40% sparse variables, we should consider
+     whether to use only the samples that contain all of the variables.
+   - In the first few variables, we see names, times and window information
+     that won't be used for model fitting and can be removed.
+   - Looking at the results variable, although there are many more of the
+     first factor ('A' / successful forms), there is still a good distribution
+     of the levels.
+
+####Test Set Summary
+   - Variables: `r testData.RowsCols[2]`
+   - Samples:     `r testData.RowsCols[1]`
+   - No. of Empty Variables: `r testData.NACols`  
+
+   - The `r testData.NACols` of `r ncol(testData)` empty columns in the test
+     data are empty and can be removed from the dataset. The remaining columns
+     will be used to predict (also eliminating X, name, time and window
+     variables). Since we can't predict with variables other than
+     these, all other variables can be removed from the training dataset
+
+
+### Clean-up Data
+
+   - Remove empty columns/variables from test dataset
+   - Remove all variables from the training set that are not in the test
+     set since these can't be use to predict
+   - Remove all traing dataset rows that are not labeled as a new_window to
+     capture only the importan measurement, not intermediate ones
+   - Remove row numbers, user name, timestamp, window variables from the
+     datasets since we don't want to use these data to train or predict.
+
+
+```{r clean data, cache=TRUE, echo=TRUE, eval=TRUE}
+#Find variables in testData without NAs. These will be used for predictions.
+testDataNAs <- data.frame(isAnNA = colSums(is.na(testData))==nrow(testData))
+testDataNotNAs <- rownames(subset(testDataNAs, !isAnNA))
+testDataIsNAs <- rownames(subset(testDataNAs, isAnNA))
+
+#All other variables can be ignored in test and training data sets.
+testDataSm <- subset(testData, select=testDataNotNAs)
+
+#Remove all variables that are not in test data as we can't use them predict anyway
+trainDataSm <- trainData[!(names(trainData) %in% testDataIsNAs)]
+
+#Remove all rows that are not new_window
+trainDataSm <- trainDataSm[trainDataSm$new_window=="yes", ]
+
+#Remove line_no, user, times and window reference as they are not planned to be used
+trainDataSm <- subset(trainDataSm, select=-c(X, user_name,
+                                             raw_timestamp_part_1,
+                                             raw_timestamp_part_2,
+                                             cvtd_timestamp, new_window,
+                                             num_window))
+testDataSm <- subset(testDataSm, select=-c(X, user_name,
+                                           raw_timestamp_part_1,
+                                           raw_timestamp_part_2,
+                                           cvtd_timestamp, new_window,
+                                           num_window))
+
+```
+
+###Create folds for cross-validation
+   - Number of folds = 10
+   - Each fold has 90% in sub-training dataset and 10% in sub-test dataset
+
+```{r create folds, cache=TRUE, echo=TRUE, eval=TRUE, hide=TRUE, message=FALSE}
+
+#Create k-Folds for Cross-validataion with k=10
+library(caret)
+set.seed(52738)
+folds <- createFolds(y=trainDataSm$classe,
+                     k=10,
+                     list=TRUE,
+                     returnTrain=TRUE)
+```
+
+###Run Random Forest Fit Algorithm on each fold
+   - Create a list to save each fold model so that the best one can be chosen
+     at the end
+   - Create a list of the accuracy of each fold model bases on sub-sampling to
+     use to judge each model
+
+```{r Random Forest, cache=TRUE, echo=TRUE, eval=TRUE, message=FALSE}
+#create an empty lists for holding fit result and each fit's accuracy
+modFitTemp <- vector("list", length(folds))
+accuracyFit <- vector("numeric", length(folds))
+
+#For each fold, use Random Forest to find best fit, predict on sub-test
+#dataset and measure accuracy
+for(i in 1:length(folds)) {
+  trainDataTemp <- trainDataSm[folds[[i]], ]
+  testDataTemp <- trainDataSm[-folds[[i]], ]
+  modFitTemp[[i]] <- train(classe ~ .,
+                           data=trainDataTemp,
+                           method="rf",
+                           prox=TRUE)
+  predTemp <- predict(modFitTemp[[i]], testDataTemp)
+  accuracyFit[[i]] <- sum(predTemp == testDataTemp$classe)*1/length(predTemp)
+}
+```
+
+##Results
+
+###Show values and plot of accuracies by fold
+```{r plot fold accuracies, cache=TRUE, echo=FALSE, eval=TRUE, comment=""}
+#Display the accuracy by fold
+round(as.data.frame(accuracyFit, row.names=as.character(1:length(folds))),3)
+sprintf("The mean of 10 k-folds accuracy is %1.3f", mean(accuracyFit))
+
+#Plot accuracy of folds
+plot(accuracyFit)
+abline(h=mean(accuracyFit))
+```
+
+###Pick the Best Prediction Model, Explain Why and Assess Expected Sample Error
+   - Pick the fold that is closest to the average of all folds:
+        - Why?
+           - Trade-off between the best fit accuracy and avoiding overfitting
+           
+```{r Pick Model, cache=TRUE, echo=FALSE, eval=TRUE, comment=""}
+bestAvgCluster <- which.min(abs(accuracyFit-mean(accuracyFit)))
+sprintf("Best Avg. Cluster number: %1.0f", bestAvgCluster)
+print("The best model fit was the following:")
+modFitTemp[bestAvgCluster]
+```
+
+###Predict the Results of the Original testData dataset with the Best Fold Random Forest model
+```{r predict testData results, cache=TRUE, echo=FALSE, eval=TRUE, comment=""}
+predTest <- as.data.frame(predict(modFitTemp[[bestAvgCluster]], testDataSm),
+                          row.names=as.character(1:nrow(testDataSm)))
+colnames(predTest) <- c("Prediction")
+print("The prediction for the test data set are as follows:")
+predTest
