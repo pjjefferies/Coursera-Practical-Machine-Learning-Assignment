@@ -1,4 +1,4 @@
-## Welcome to GitHub Pages
+## Coursera-Practical-Machine-Learning-Assignment
 
 You can use the [editor on GitHub](https://github.com/pjjefferies/Coursera-Practical-Machine-Learning-Assignment/edit/gh-pages/README.md) to maintain and preview the content for your website in Markdown files.
 
