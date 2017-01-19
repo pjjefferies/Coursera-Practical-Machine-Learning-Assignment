@@ -1,6 +1,6 @@
 ## Coursera-Practical-Machine-Learning-Assignment
 
-<a href="https://pjjefferies.github.io/Coursera-Practical-Machine-Learning-Assignment/barbell-Lift-Analysis.html">Barbell Lift Analysis HTML File for Grading Here"</A>
+<a href="https://pjjefferies.github.io/Coursera-Practical-Machine-Learning-Assignment/barbell-Lift-Analysis.html">Barbell Lift Analysis HTML File for Grading Here</A>
 
 or use this URL: https://pjjefferies.github.io/Coursera-Practical-Machine-Learning-Assignment/barbell-Lift-Analysis.html
 
